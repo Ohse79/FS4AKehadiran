@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistem Kehadiran Digital Ko-kurikulum (FS4A Project)</title>
+    <style>
+        /* Reka bentuk ringkas & responsif */
+        :root {
+            --primary: #007bff;
+            --muted-bg: #f4f7f6;
+            --card-bg: #ffffff;
+            --shadow: rgba(0,0,0,0.08);
+        }
+        html,body { height:100%; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 12px;
+            background-color: var(--muted-bg);
+            color: #222;
+            -webkit-font-smoothing:antialiased;
+        }
+
+        h1 { color: var(--primary); text-align: center; margin-bottom: 10px; font-size:1.25rem; }
+        #control-panel, #attendance-section, hr {
+            margin: 12px auto;
+            padding: 14px;
+            border-radius: 10px;
+            background-color: var(--card-bg);
+            box-shadow: 0 2px 6px var(--shadow);
+            max-width: 1100px;
+        }
+
+        .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+        label { font-weight:600; margin-right:6px; }
+        select, input[type="file"], input[type="text"] {
+            padding:8px 10px; border-radius:6px; border:1px solid #ddd; min-height:38px;
+        }
+        button {
+            padding:10px 14px; margin:0; cursor:pointer; border:none; border-radius:8px;
+            font-weight:700; min-height:40px;
+        }
+        button.primary { background:var(--primary); color:#fff; }
+        button.danger { background:#dc3545; color:#fff; }
+        button.success { background:#28a745; color:#fff; }
+        button.info { background:#17a2b8; color:#fff; }
+
+        /* Tables */
+        .table-wrap { overflow-x:auto; margin-top:12px; }
+        table { width:100%; border-collapse: collapse; min-width:700px; }
+        th, td { border:1px solid #e6e6e6; padding:8px; text-align:center; vertical-align:middle; }
+        th { background:#f1f3f5; font-weight:700; position:sticky; top:0; z-index:1; }
+        td:nth-child(2) { text-align:left; min-width:180px; }
+
+        /* Small devices */
+        @media (max-width:600px) {
+            h1 { font-size:1.1rem; }
+            #control-panel, #attendance-section { padding:10px; }
+            .row { gap:8px; }
+            select, button, input[type="file"] { font-size:0.95rem; }
+            th, td { padding:7px; font-size:0.92rem; }
+        }
+
+        /* Loading overlay */
+        #loadingOverlay {
+            position: fixed; inset: 0; display: none; align-items:center; justify-content:center;
+            background: rgba(0,0,0,0.35); z-index: 9999;
+        }
+        #loadingOverlay .box {
+            background: #fff; padding:18px 20px; border-radius:10px; box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+            display:flex; gap:12px; align-items:center;
+        }
+        .spinner {
+            width:30px; height:30px; border-radius:50%; border:4px solid #eee; border-top-color:var(--primary);
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .muted { color:#666; font-size:0.95rem; }
+    </style>
+</head>
+<body onload="loadAllData()">
+
+    <h1>Sistem Kehadiran Digital Aktiviti Ko-kurikulum</h1>
+
+    <div id="control-panel" role="region" aria-label="Panel Kawalan">
+        <div class="row" style="align-items:center; justify-content:space-between;">
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <label for="clubName"><strong>Pilih Kelab Tersimpan:</strong></label>
+                <select id="clubName" onchange="loadClubData()">
+                    <option value="">-- Tiada Kelab Tersimpan --</option>
+                </select>
+            </div>
+
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <label for="fileInput" class="muted"><strong>ATAU Muat Naik Fail CSV:</strong></label>
+                <!-- Accept both .csv extension and text/csv MIME -->
+                <input type="file" id="fileInput" accept=".csv,text/csv" title="Import Senarai Ahli (CSV)">
+                <button class="primary" id="pickFileButton" onclick="document.getElementById('fileInput').click();">Pilih Fail CSV</button>
+                <button class="danger" onclick="clearStorage()">Padam Semua Rekod 🗑️</button>
+            </div>
+        </div>
+
+        <div style="margin-top:10px;" class="muted">
+            <small>Nota: Fail CSV mesti mengandungi lajur bertajuk <strong>Nama Murid, Kelas, Jantina</strong> (huruf besar/kecil tidak sensitif).</small>
+        </div>
+    </div>
+
+    <hr>
+
+    <div id="attendance-section" style="display:none;">
+        <h2 style="margin-bottom:6px;">Kehadiran Kelab: <span id="currentClubDisplay"></span></h2>
+
+        <div class="row" style="justify-content:flex-start; margin-bottom:8px;">
+            <button class="primary" onclick="addNewDateColumn()">+ Tambah Tarikh Baru (Tick Semua)</button>
+            <button class="success" onclick="saveAttendance()">Simpan Kehadiran</button>
+            <button class="info" onclick="exportToCSV()">⬇️ Eksport ke CSV/Excel</button>
+        </div>
+
+        <div class="table-wrap">
+            <table id="attendanceTable" aria-describedby="attendance description">
+                <thead>
+                    <tr id="tableHeader">
+                        <th>Bilangan</th>
+                        <th>Nama Murid</th>
+                        <th>Kelas</th>
+                        <th>Jantina</th>
+                        <th>Jumlah Hadir</th>
+                    </tr>
+                </thead>
+                <tbody id="attendanceTableBody"></tbody>
+            </table>
+        </div>
+
+        <br>
+
+        <h3>Rumusan Kehadiran Setiap Perjumpaan</h3>
+        <div class="table-wrap">
+            <table id="summaryTable">
+                <thead>
+                    <tr>
+                        <th>Tarikh Perjumpaan</th>
+                        <th>Lelaki Hadir</th>
+                        <th>Perempuan Hadir</th>
+                        <th>Jumlah Ahli Hadir</th>
+                    </tr>
+                </thead>
+                <tbody id="summaryTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" role="status" aria-live="polite">
+        <div class="box">
+            <div class="spinner" aria-hidden="true"></div>
+            <div>
+                <div style="font-weight:700;">Memproses fail...</div>
+                <div class="muted" style="font-size:0.92rem;">Sila tunggu sebentar — ini mungkin mengambil beberapa saat pada peranti mudah alih.</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="attendance.js"></script>
+    <script>
+        // Pastikan input file diproses bila dipilih (ini penting pada mobile)
+        const fileInput = document.getElementById('fileInput');
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files && fileInput.files.length > 0) {
+                // Panggil fungsi di attendance.js
+                handleFileUpload();
+            }
+        });
+
+        // Optional: tekan Enter pada select untuk load semula (aksesibiliti)
+        document.getElementById('clubName').addEventListener('keydown', function(e){
+            if (e.key === 'Enter') loadClubData();
+        });
+    </script>
+</body>
+</html>
